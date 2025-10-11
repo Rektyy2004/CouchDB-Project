@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Offline Movies — NG YUAN XIN</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background: #f8fafc;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      color: #1e3a8a;
+    }
+    form {
+      background: white;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      margin-bottom: 1.5rem;
+    }
+    label {
+      display: block;
+      margin-top: 0.5rem;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 0.25rem;
+      margin-top: 0.25rem;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      margin-top: 0.75rem;
+      margin-right: 0.5rem;
+      border: none;
+      border-radius: 0.25rem;
+      background-color: #2563eb;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #1e40af;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    th, td {
+      text-align: left;
+      padding: 0.5rem;
+      border-bottom: 1px solid #eee;
+    }
+    th {
+      background-color: #e2e8f0;
+      font-weight: 600;
+    }
+    tr:hover {
+      background-color: #f1f5f9;
+    }
+    footer {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #555;
+      margin-top: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Offline Movies by NG YUAN XIN</h1>
+
+  <!-- CRUD Form -->
+  <form id="docForm">
+    <label for="_id">_id (leave blank to auto-generate)</label>
+    <input id="_id" type="text">
+
+    <label for="title">Title</label>
+    <input id="title" type="text" required>
+
+    <label for="year">Year</label>
+    <input id="year" type="number">
+
+    <label for="rating">Rating</label>
+    <input id="rating" type="number" step="0.1">
+
+    <div>
+      <button type="submit">Create / Update</button>
+      <button type="button" id="btnRead" style="background:#6b7280;">Read</button>
+      <button type="button" id="btnDelete" style="background:#dc2626;">Delete</button>
+      <button type="button" id="btnClear" style="background:#94a3b8;">Clear</button>
+    </div>
+  </form>
+
+  <table id="docsTable">
+    <thead>
+      <tr>
+        <th>_id</th>
+        <th>Title</th>
+        <th>Year</th>
+        <th>Rating</th>
+        <th>_rev</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <section style="margin-bottom:1.5rem; background:white; padding:1rem; border-radius:0.5rem; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
+    <h2 style="margin-top:0; font-size:1.2rem;">Sync with CouchDB</h2>
+    <label for="remoteUrl">CouchDB Remote URL</label>
+    <input id="remoteUrl" type="text" placeholder="http://admin:pass@127.0.0.1:5984/movies" style="width:100%;padding:.5rem;margin-top:.25rem;">
+    <div style="margin-top:.75rem;">
+      <button id="btnStartSync">Start Live Sync</button>
+      <button id="btnStopSync" style="background:#6b7280;">Stop Sync</button>
+    </div>
+    <p id="syncStatus" style="margin-top:0.5rem; font-size:0.9rem; color:#555;">Not syncing</p>
+  </section>
+
+
+  <footer>
+    Offline-first web app using PouchDB — Created by NG YUAN XIN
+  </footer>
+
+  <script>
+    const db = new PouchDB('movies');
+    console.log('PouchDB ready:', db);
+
+    async function refreshTable() {
+      const res = await db.allDocs({ include_docs: true, descending: true });
+      const tbody = document.querySelector('#docsTable tbody');
+      tbody.innerHTML = '';
+      res.rows.forEach(row => {
+        const d = row.doc;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${d._id}</td>
+                        <td>${d.title ?? ''}</td>
+                        <td>${d.year ?? ''}</td>
+                        <td>${d.rating ?? ''}</td>
+                        <td>${d._rev}</td>`;
+        tr.onclick = () => {
+          document.getElementById('_id').value = d._id || '';
+          document.getElementById('title').value = d.title || '';
+          document.getElementById('year').value = d.year || '';
+          document.getElementById('rating').value = d.rating || '';
+        };
+        tbody.appendChild(tr);
+      });
+    }
+
+    //Create
+    document.getElementById('docForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('_id').value.trim() || `movie:${crypto.randomUUID()}`;
+      const title = document.getElementById('title').value.trim();
+      const year = parseInt(document.getElementById('year').value, 10) || null;
+      const rating = parseFloat(document.getElementById('rating').value) || null;
+
+      let existing = null;
+      try { existing = await db.get(id); } catch (err) { if (err.status !== 404) throw err; }
+
+      const doc = {
+        _id: id,
+        title, year, rating,
+        updatedAt: new Date().toISOString(),
+        ...(existing ? { _rev: existing._rev } : {})
+      };
+      await db.put(doc);
+      await refreshTable();
+    });
+
+    //Read
+    document.getElementById('btnRead').addEventListener('click', async () => {
+      const id = document.getElementById('_id').value.trim();
+      if (!id) return alert('Enter _id first');
+      try {
+        const d = await db.get(id);
+        document.getElementById('title').value = d.title || '';
+        document.getElementById('year').value = d.year || '';
+        document.getElementById('rating').value = d.rating || '';
+      } catch (e) { alert('Not found'); }
+    });
+
+    //Delete
+    document.getElementById('btnDelete').addEventListener('click', async () => {
+      const id = document.getElementById('_id').value.trim();
+      if (!id) return alert('Enter _id first');
+      try {
+        const d = await db.get(id);
+        await db.remove(d);
+        await refreshTable();
+      } catch (e) { alert('Not found'); }
+    });
+
+    //Clear
+    document.getElementById('btnClear').addEventListener('click', () => {
+      document.getElementById('_id').value='';
+      document.getElementById('title').value='';
+      document.getElementById('year').value='';
+      document.getElementById('rating').value='';
+    });
+
+    refreshTable();
+
+    let syncHandler = null;
+
+    function setSyncStatus(text, color="#555") {
+      const el = document.getElementById('syncStatus');
+      el.textContent = text;
+      el.style.color = color;
+    }
+
+    document.getElementById('btnStartSync').addEventListener('click', () => {
+      const remoteUrl = document.getElementById('remoteUrl').value.trim();
+      if (!remoteUrl) return alert('Please enter your CouchDB URL');
+
+      const remoteDB = new PouchDB(remoteUrl);
+      syncHandler = db.sync(remoteDB, { live: true, retry: true })
+        .on('change', info => {
+          setSyncStatus('Syncing changes...', '#2563eb');
+          console.log('Change detected', info);
+          refreshTable();
+        })
+        .on('paused', err => {
+          setSyncStatus('Sync paused (waiting or offline)', '#ca8a04');
+        })
+        .on('active', () => {
+          setSyncStatus('Sync active', '#16a34a');
+        })
+        .on('error', err => {
+          setSyncStatus('Sync error: ' + err.message, '#dc2626');
+          console.error(err);
+        });
+
+      setSyncStatus('Sync started...', '#2563eb');
+    });
+
+    document.getElementById('btnStopSync').addEventListener('click', () => {
+      if (syncHandler) {
+        syncHandler.cancel();
+        syncHandler = null;
+        setSyncStatus('Not syncing');
+      }
+    });
+
+  </script>
+</body>
+</html>
